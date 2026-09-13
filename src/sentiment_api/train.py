@@ -52,14 +52,16 @@ def build_pipeline() -> Pipeline:
                 TfidfVectorizer(
                     ngram_range=(1, 2),
                     min_df=1,
-                    max_features=5000,
+                    max_features=8000,
+                    sublinear_tf=True,
                 ),
             ),
             (
                 "clf",
                 LogisticRegression(
-                    max_iter=2000,
+                    max_iter=3000,
                     class_weight="balanced",
+                    C=2.0,
                     random_state=42,
                 ),
             ),
@@ -71,7 +73,7 @@ def train_model(
     data_path: str | Path,
     *,
     model_path: str | Path = DEFAULT_MODEL_PATH,
-    test_size: float = 0.25,
+    test_size: float = 0.2,
     random_state: int = 42,
 ) -> TrainResult:
     frame = load_dataset(data_path)
@@ -83,9 +85,13 @@ def train_model(
         stratify=frame["label"],
     )
 
+    # Evaluate on holdout, then refit on all rows for the served model.
+    eval_pipeline = build_pipeline()
+    eval_pipeline.fit(x_train, y_train)
+    pred = eval_pipeline.predict(x_test)
+
     pipeline = build_pipeline()
-    pipeline.fit(x_train, y_train)
-    pred = pipeline.predict(x_test)
+    pipeline.fit(frame["text"], frame["label"])
 
     out = Path(model_path)
     out.parent.mkdir(parents=True, exist_ok=True)
